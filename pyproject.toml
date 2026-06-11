@@ -1,0 +1,16 @@
+[project]
+name = "facetouchguard"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "mediapipe>=0.10.35",
+]
+
+
+[dependency-groups]
+dev = [
+    "pip-audit>=2.10.1",
+    "pip-tools>=7.5.3",
+]
