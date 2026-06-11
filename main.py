@@ -1,13 +1,15 @@
 """Face Touch Guard - detects face touching via webcam and plays an alert sound."""
 
 import os
+import shutil
 import subprocess
+import sys
 import time
 import urllib.request
 
 import cv2
-import numpy as np
 import mediapipe as mp
+import numpy as np
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision
 
@@ -16,8 +18,8 @@ CAMERA_INDEX = 0
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 ALERT_SOUND = "/System/Library/Sounds/Sosumi.aiff"
-COOLDOWN_SECONDS = 3.0
-CONSECUTIVE_FRAMES_NEEDED = 5
+COOLDOWN_SECONDS = 1.0
+CONSECUTIVE_FRAMES_NEEDED = 1
 FACE_BOX_MARGIN = 20  # pixels of padding around face bounding box
 
 # Fingertip landmark indices in MediaPipe Hands
@@ -71,13 +73,38 @@ def is_point_in_box(point, bbox):
     return x1 <= x <= x2 and y1 <= y <= y2
 
 
-def play_alert():
-    """Play alert sound asynchronously via afplay."""
-    subprocess.Popen(
-        ["afplay", ALERT_SOUND],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+def play_alert(sound_file=None):
+    """Play alert sound asynchronously, cross-platform."""
+    src = sound_file or ALERT_SOUND
+    if sys.platform.startswith("win"):
+        try:
+            import winsound
+
+            if src and os.path.exists(src):
+                winsound.PlaySound(
+                    src, winsound.SND_FILENAME | winsound.SND_ASYNC
+                )
+            else:
+                winsound.Beep(1000, 200)  # simple beep
+        except Exception:
+            print("\a", end="", flush=True)
+    elif sys.platform == "darwin":
+        subprocess.Popen(
+            ["afplay", src],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    else:
+        for player in ("aplay", "paplay", "play"):
+            if shutil.which(player):
+                subprocess.Popen(
+                    [player, src],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                break
+        else:
+            print("\a", end="", flush=True)
 
 
 def draw_debug(frame, face_bbox, fingertips, touching):
