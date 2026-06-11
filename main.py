@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+from datetime import datetime
 
 import cv2
 import mediapipe as mp
@@ -21,9 +22,9 @@ ALERT_SOUND = "/System/Library/Sounds/Sosumi.aiff"
 COOLDOWN_SECONDS = 2.0
 CONSECUTIVE_FRAMES_NEEDED = 2
 FACE_BOX_MARGIN = 70  # pixels of padding around face bounding box
-MIN_HAND_SIZE_PX = 10
-MIN_HAND_DETECTION_CONFIDENCE = 0.65
-MIN_HAND_TRACKING_CONFIDENCE = 0.65
+MIN_HAND_SIZE_PX = 70
+MIN_HAND_DETECTION_CONFIDENCE = 0.7
+MIN_HAND_TRACKING_CONFIDENCE = 0.7
 
 # Fingertip landmark indices in MediaPipe Hands
 FINGERTIP_IDS = [4, 8, 12, 16, 20]  # thumb, index, middle, ring, pinky
@@ -34,6 +35,9 @@ FACE_MODEL = os.path.join(MODELS_DIR, "face_landmarker.task")
 HAND_MODEL = os.path.join(MODELS_DIR, "hand_landmarker.task")
 FACE_MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task"
 HAND_MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task"
+
+# Snapshot directory: user's Pictures/FaceTouch
+SNAPSHOT_DIR = os.path.join(os.path.expanduser("~"), "Pictures", "FaceTouch")
 
 
 def download_models():
@@ -88,7 +92,7 @@ def play_alert(sound_file=None):
                     src, winsound.SND_FILENAME | winsound.SND_ASYNC
                 )
             else:
-                winsound.Beep(1024, 1500)  # simple beep
+                winsound.Beep(1024, 1000)  # simple beep
         except Exception:
             print("\a", end="", flush=True)
     elif sys.platform == "darwin":
@@ -125,6 +129,13 @@ def draw_debug(frame, face_bbox, fingertips, touching):
 
 def main():
     download_models()
+
+    # Ensure snapshot directory exists (do this once before the loop)
+    try:
+        os.makedirs(SNAPSHOT_DIR, exist_ok=True)
+    except Exception as e:
+        print(f"Warning: could not create snapshot dir {SNAPSHOT_DIR}: {e}")
+        quit()
 
     cap = cv2.VideoCapture(CAMERA_INDEX)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
@@ -234,6 +245,18 @@ def main():
             last_alert_time = now
             touch_count += 1
             print(f"Face touch detected! (total: {touch_count})")
+
+            # Save snapshot with debug overlay (always include debug marks on snapshot)
+            try:
+                snapshot = frame.copy()
+                if face_bbox:
+                    draw_debug(snapshot, face_bbox, all_fingertips, True)
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+                fname = f"facetouch_{timestamp}.jpg"
+                path = os.path.join(SNAPSHOT_DIR, fname)
+                cv2.imwrite(path, snapshot)
+            except Exception as e:
+                print(f"Failed to save snapshot: {e}")
 
         # Draw debug overlay
         if show_debug and face_bbox:
