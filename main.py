@@ -18,9 +18,9 @@ CAMERA_INDEX = 0
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 ALERT_SOUND = "/System/Library/Sounds/Sosumi.aiff"
-COOLDOWN_SECONDS = 1.0
-CONSECUTIVE_FRAMES_NEEDED = 1
-FACE_BOX_MARGIN = 20  # pixels of padding around face bounding box
+COOLDOWN_SECONDS = 2.0
+CONSECUTIVE_FRAMES_NEEDED = 2
+FACE_BOX_MARGIN = 70  # pixels of padding around face bounding box
 
 # Fingertip landmark indices in MediaPipe Hands
 FINGERTIP_IDS = [4, 8, 12, 16, 20]  # thumb, index, middle, ring, pinky
@@ -85,7 +85,7 @@ def play_alert(sound_file=None):
                     src, winsound.SND_FILENAME | winsound.SND_ASYNC
                 )
             else:
-                winsound.Beep(1000, 200)  # simple beep
+                winsound.Beep(1024, 1500)  # simple beep
         except Exception:
             print("\a", end="", flush=True)
     elif sys.platform == "darwin":
@@ -156,7 +156,9 @@ def main():
     touch_count = 0
     frame_ts = 0
 
-    print("Face Touch Guard running. Press 'q' to quit, 'd' for debug, SPACE to pause.")
+    print(
+        "Face Touch Guard running. Press 'q' to quit, 'd' for debug, SPACE to pause."
+    )
 
     while True:
         # When paused, release camera and wait for key
@@ -225,8 +227,13 @@ def main():
             draw_debug(frame, face_bbox, all_fingertips, is_alert)
         elif show_debug:
             cv2.putText(
-                frame, "No face detected", (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 165, 255), 2,
+                frame,
+                "No face detected",
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 165, 255),
+                2,
             )
 
         cv2.imshow("Face Touch Guard", frame)
@@ -242,11 +249,27 @@ def main():
             cap.release()
             cv2.destroyAllWindows()
             # Show a small window for key input while paused
-            pause_img = np.zeros((FRAME_HEIGHT, FRAME_WIDTH, 3), dtype=np.uint8)
-            cv2.putText(pause_img, "PAUSED", (FRAME_WIDTH // 2 - 100, FRAME_HEIGHT // 2 - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 3)
-            cv2.putText(pause_img, "SPACE to resume | q to quit", (FRAME_WIDTH // 2 - 170, FRAME_HEIGHT // 2 + 40),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (150, 150, 150), 1)
+            pause_img = np.zeros(
+                (FRAME_HEIGHT, FRAME_WIDTH, 3), dtype=np.uint8
+            )
+            cv2.putText(
+                pause_img,
+                "PAUSED",
+                (FRAME_WIDTH // 2 - 100, FRAME_HEIGHT // 2 - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1.5,
+                (0, 0, 255),
+                3,
+            )
+            cv2.putText(
+                pause_img,
+                "SPACE to resume | q to quit",
+                (FRAME_WIDTH // 2 - 170, FRAME_HEIGHT // 2 + 40),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (150, 150, 150),
+                1,
+            )
             cv2.imshow("Face Touch Guard", pause_img)
             print("  Paused — camera off. Press SPACE to resume.")
 
