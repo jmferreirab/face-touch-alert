@@ -21,6 +21,9 @@ ALERT_SOUND = "/System/Library/Sounds/Sosumi.aiff"
 COOLDOWN_SECONDS = 2.0
 CONSECUTIVE_FRAMES_NEEDED = 2
 FACE_BOX_MARGIN = 70  # pixels of padding around face bounding box
+MIN_HAND_SIZE_PX = 10
+MIN_HAND_DETECTION_CONFIDENCE = 0.65
+MIN_HAND_TRACKING_CONFIDENCE = 0.65
 
 # Fingertip landmark indices in MediaPipe Hands
 FINGERTIP_IDS = [4, 8, 12, 16, 20]  # thumb, index, middle, ring, pinky
@@ -143,8 +146,8 @@ def main():
         base_options=mp_python.BaseOptions(model_asset_path=HAND_MODEL),
         running_mode=vision.RunningMode.VIDEO,
         num_hands=2,
-        min_hand_detection_confidence=0.5,
-        min_tracking_confidence=0.5,
+        min_hand_detection_confidence=MIN_HAND_DETECTION_CONFIDENCE,
+        min_tracking_confidence=MIN_HAND_TRACKING_CONFIDENCE,
     )
     face_detector = vision.FaceLandmarker.create_from_options(face_options)
     hand_detector = vision.HandLandmarker.create_from_options(hand_options)
@@ -196,6 +199,17 @@ def main():
             face_bbox = get_face_bbox(face_result.face_landmarks[0], w, h)
 
             for hand_lms in hand_result.hand_landmarks:
+                # ignore tiny detections (e.g., ears) by checking wrist -> index tip distance
+                wrist = hand_lms[0]
+                index_tip = hand_lms[8]
+                wrist_px = (int(wrist.x * w), int(wrist.y * h))
+                index_px = (int(index_tip.x * w), int(index_tip.y * h))
+                hand_size = np.hypot(
+                    wrist_px[0] - index_px[0], wrist_px[1] - index_px[1]
+                )
+                if hand_size < MIN_HAND_SIZE_PX:
+                    continue
+
                 tips = get_fingertips(hand_lms, w, h)
                 all_fingertips.extend(tips)
 
