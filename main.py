@@ -25,11 +25,12 @@ ALERT_SOUNDS = []
 REWARD_SOUNDS = []
 COOLDOWN_SECONDS = 1.0
 REWARD_DELAY_SECONDS = 8.0
-CONSECUTIVE_FRAMES_NEEDED = 1
-FACE_BOX_MARGIN = 90  # pixels of padding around face bounding box
-MIN_HAND_SIZE_PX = 70
-MIN_HAND_DETECTION_CONFIDENCE = 0.75
-MIN_HAND_TRACKING_CONFIDENCE = 0.75
+CONSECUTIVE_FRAMES_NEEDED = 2
+FACE_BOX_MARGIN = 80  # pixels of padding around face bounding box
+MIN_HAND_SIZE_PX = 80
+MIN_HAND_DETECTION_CONFIDENCE = 0.80
+MIN_HAND_TRACKING_CONFIDENCE = 0.80
+
 
 # Fingertip landmark indices in MediaPipe Hands
 FINGERTIP_IDS = [4, 8, 12, 16, 20]  # thumb, index, middle, ring, pinky
@@ -50,7 +51,6 @@ def _populate_sounds(target_list, path, sound_type):
 
     if not target_list:
         print(f"No {sound_type} sounds found")
-        sys.exit(1)
 
 
 def populate_reward_sounds(reward_path="./audio/good"):
