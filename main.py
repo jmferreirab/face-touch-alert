@@ -4,9 +4,11 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 from datetime import datetime
+from pathlib import Path
 
 import cv2
 import mediapipe as mp
@@ -18,13 +20,16 @@ from mediapipe.tasks.python import vision
 CAMERA_INDEX = 0
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
-ALERT_SOUND = "/System/Library/Sounds/Sosumi.aiff"
-COOLDOWN_SECONDS = 2.0
-CONSECUTIVE_FRAMES_NEEDED = 2
-FACE_BOX_MARGIN = 70  # pixels of padding around face bounding box
+FALLBACK_SOUND = "/System/Library/Sound/Sosumi.aiff"
+ALERT_SOUNDS = []
+REWARD_SOUNDS = []
+COOLDOWN_SECONDS = 1.0
+REWARD_DELAY_SECONDS = 8.0
+CONSECUTIVE_FRAMES_NEEDED = 1
+FACE_BOX_MARGIN = 90  # pixels of padding around face bounding box
 MIN_HAND_SIZE_PX = 70
-MIN_HAND_DETECTION_CONFIDENCE = 0.7
-MIN_HAND_TRACKING_CONFIDENCE = 0.7
+MIN_HAND_DETECTION_CONFIDENCE = 0.75
+MIN_HAND_TRACKING_CONFIDENCE = 0.75
 
 # Fingertip landmark indices in MediaPipe Hands
 FINGERTIP_IDS = [4, 8, 12, 16, 20]  # thumb, index, middle, ring, pinky
@@ -38,6 +43,28 @@ HAND_MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarke
 
 # Snapshot directory: user's Pictures/FaceTouch
 SNAPSHOT_DIR = os.path.join(os.path.expanduser("~"), "Pictures", "FaceTouch")
+
+
+def _populate_sounds(target_list, path, sound_type):
+    target_list.extend(Path(path).glob("*.wav"))
+
+    if not target_list:
+        print(f"No {sound_type} sounds found")
+        sys.exit(1)
+
+
+def populate_reward_sounds(reward_path="./audio/good"):
+    _populate_sounds(REWARD_SOUNDS, reward_path, "reward")
+
+
+def populate_alert_sounds(alert_path="./audio/alert"):
+    _populate_sounds(ALERT_SOUNDS, alert_path, "alert")
+
+
+def get_random_sound(sound_list: list):
+    if not sound_list:
+        return None
+    return str(np.random.choice(sound_list))
 
 
 def download_models():
@@ -82,7 +109,7 @@ def is_point_in_box(point, bbox):
 
 def play_alert(sound_file=None):
     """Play alert sound asynchronously, cross-platform."""
-    src = sound_file or ALERT_SOUND
+    src = sound_file or FALLBACK_SOUND
     if sys.platform.startswith("win"):
         try:
             import winsound
@@ -92,7 +119,8 @@ def play_alert(sound_file=None):
                     src, winsound.SND_FILENAME | winsound.SND_ASYNC
                 )
             else:
-                winsound.Beep(1024, 1000)  # simple beep
+                # fallback short async beep (winsound.Beep blocks; prefer PlaySound with None)
+                winsound.MessageBeep(winsound.SystemHand)
         except Exception:
             print("\a", end="", flush=True)
     elif sys.platform == "darwin":
@@ -114,6 +142,48 @@ def play_alert(sound_file=None):
             print("\a", end="", flush=True)
 
 
+def _play_reward_internal(src):
+    """Internal: play reward (called in background thread)."""
+    if sys.platform.startswith("win"):
+        try:
+            import winsound
+
+            if src and os.path.exists(src):
+                winsound.PlaySound(
+                    src, winsound.SND_FILENAME | winsound.SND_ASYNC
+                )
+            else:
+                winsound.MessageBeep(winsound.MB_ICONINFORMATION)
+        except Exception:
+            print("\a", end="", flush=True)
+    elif sys.platform == "darwin":
+        subprocess.Popen(
+            ["afplay", src],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    else:
+        for player in ("aplay", "paplay", "play"):
+            if shutil.which(player):
+                subprocess.Popen(
+                    [player, src],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                break
+        else:
+            print("\a", end="", flush=True)
+
+
+def play_reward(sound_file=None):
+    """Kick off reward sound in a background thread (non-blocking)."""
+    src = sound_file or FALLBACK_SOUND
+    t = threading.Thread(
+        target=_play_reward_internal, args=(src,), daemon=True
+    )
+    t.start()
+
+
 def draw_debug(frame, face_bbox, fingertips, touching):
     """Draw debug overlay: face box, fingertips, and touch status."""
     x1, y1, x2, y2 = face_bbox
@@ -129,6 +199,8 @@ def draw_debug(frame, face_bbox, fingertips, touching):
 
 def main():
     download_models()
+    populate_alert_sounds()
+    populate_reward_sounds()
 
     # Ensure snapshot directory exists (do this once before the loop)
     try:
@@ -150,8 +222,8 @@ def main():
         base_options=mp_python.BaseOptions(model_asset_path=FACE_MODEL),
         running_mode=vision.RunningMode.VIDEO,
         num_faces=1,
-        min_face_detection_confidence=0.5,
-        min_tracking_confidence=0.5,
+        min_face_detection_confidence=0.4,
+        min_tracking_confidence=0.4,
     )
     hand_options = vision.HandLandmarkerOptions(
         base_options=mp_python.BaseOptions(model_asset_path=HAND_MODEL),
@@ -169,6 +241,8 @@ def main():
     paused = False
     touch_count = 0
     frame_ts = 0
+    was_touching = False
+    reward_timer = None
 
     print(
         "Face Touch Guard running. Press 'q' to quit, 'd' for debug, SPACE to pause."
@@ -235,13 +309,42 @@ def main():
         else:
             consecutive_touch_frames = 0
 
+        # region Reward sound logic
+
+        if was_touching and not touching_this_frame:
+            sound = get_random_sound(REWARD_SOUNDS)
+            # cancel any existing pending reward and start a new timer
+            if reward_timer is not None:
+                try:
+                    reward_timer.cancel()
+                except Exception:
+                    pass
+            reward_timer = threading.Timer(
+                REWARD_DELAY_SECONDS, play_reward, args=(sound,)
+            )
+            reward_timer.daemon = True
+            reward_timer.start()
+
+        # if the user touches again before the reward timer fires, cancel the pending reward
+        if touching_this_frame and reward_timer is not None:
+            try:
+                reward_timer.cancel()
+            except Exception:
+                pass
+            reward_timer = None
+
+        was_touching = touching_this_frame
+
+        # region Alert sound logic
+
         # Alert if enough consecutive frames and cooldown elapsed
         now = time.time()
         if (
             consecutive_touch_frames >= CONSECUTIVE_FRAMES_NEEDED
             and now - last_alert_time > COOLDOWN_SECONDS
         ):
-            play_alert()
+            sound = get_random_sound(ALERT_SOUNDS)
+            play_alert(sound)
             last_alert_time = now
             touch_count += 1
             print(f"Face touch detected! (total: {touch_count})")
