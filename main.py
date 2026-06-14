@@ -26,7 +26,7 @@ REWARD_SOUNDS = []
 COOLDOWN_SECONDS = 1.0
 REWARD_DELAY_SECONDS = 8.0
 CONSECUTIVE_FRAMES_NEEDED = 2
-FACE_BOX_MARGIN = 80  # pixels of padding around face bounding box
+FACE_BOX_MARGIN = 60  # pixels of padding around face bounding box
 MIN_HAND_SIZE_PX = 80
 MIN_HAND_DETECTION_CONFIDENCE = 0.80
 MIN_HAND_TRACKING_CONFIDENCE = 0.80
@@ -44,6 +44,11 @@ HAND_MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarke
 
 # Snapshot directory: user's Pictures/FaceTouch
 SNAPSHOT_DIR = os.path.join(os.path.expanduser("~"), "Pictures", "FaceTouch")
+
+LINUX_PLAYER = next(
+    (p for p in ("aplay", "paplay", "play") if shutil.which(p)),
+    None,
+)
 
 
 def _populate_sounds(target_list, path, sound_type):
@@ -130,14 +135,12 @@ def play_alert(sound_file=None):
             stderr=subprocess.DEVNULL,
         )
     else:
-        for player in ("aplay", "paplay", "play"):
-            if shutil.which(player):
-                subprocess.Popen(
-                    [player, src],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-                break
+        if LINUX_PLAYER:
+            subprocess.Popen(
+                [LINUX_PLAYER, src],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
         else:
             print("\a", end="", flush=True)
 
@@ -163,14 +166,12 @@ def _play_reward_internal(src):
             stderr=subprocess.DEVNULL,
         )
     else:
-        for player in ("aplay", "paplay", "play"):
-            if shutil.which(player):
-                subprocess.Popen(
-                    [player, src],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-                break
+        if LINUX_PLAYER:
+            subprocess.Popen(
+                [LINUX_PLAYER, src],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
         else:
             print("\a", end="", flush=True)
 
