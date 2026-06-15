@@ -1,0 +1,3 @@
+- Fix pause logic so the application can be unpaused
+- Find a way to avoid creating two windows to run it (cmd + camera feed).
+- Package as an exe with icon
